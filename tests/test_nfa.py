@@ -13,8 +13,9 @@ class TestNFA(unittest.TestCase):
         nfa.add_transition(s1, s2, fa.CharacterMatcher("a"))
 
         self.assertTrue(nfa.search("a"))
-        self.assertFalse(nfa.search("aa"))
+        self.assertTrue(nfa.search("aa"))
 
-        nfa.add_transition(s2, s2, fa.CharacterMatcher("a"))
-
+        nfa.add_transition(s2, s2, fa.CharacterMatcher("b"))
+        
+        self.assertTrue(nfa.search("ab"))
         self.assertTrue(nfa.search("aa"))
