@@ -279,8 +279,10 @@ class RegexParser:
     
     @staticmethod
     def parse(regex):
-        lexemes = RegexParser._lex(regex)
-        return RegexParser._parse_expr(peekable(lexemes))
+        it = peekable(RegexParser._lex(regex))
+        ast = RegexParser._parse_expr(it)
+        assert RegexParser._eof(it)
+        return ast
     
     @staticmethod
     def _advance(it):
@@ -312,6 +314,7 @@ class RegexParser:
             return lhs
 
         if RegexParser._peek(it) == "|":
+            RegexParser._advance(it)
             return Or(lhs, RegexParser._parse_expr(it))
         
         return Sequence(lhs, RegexParser._parse_expr(it))
@@ -334,8 +337,10 @@ class RegexParser:
     def _parse_metachar(it, atom):
         match RegexParser._peek(it):
             case "*":
+                RegexParser._advance(it)
                 return KleeneStar(atom)
             case "+":
-                return Sequence(atom, KleeneStar(atom))
+                RegexParser._advance(it)
+                return KleenePlus(atom)
             case _:
                 return atom

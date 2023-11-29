@@ -158,6 +158,6 @@ class NFA:
                         )
                     )
 
-        return True
+        return False
 
 
