@@ -147,11 +147,15 @@ class Group(UnaryOperator):
     """Matches a singular expression that may or may not be captured
     """
 
-    def __init__(self, regex):
+    def __init__(self, regex, name=None):
         super().__init__(regex)
+        self.group_name = None
 
     def item(self):
         return "()"
+    
+    def get_group_name(self):
+        return self.group_name
 
     def accept(self, visitor):
         return visitor.visit_group(self)
@@ -236,6 +240,7 @@ class NFABuilder(Visitor):
         self.nfa = fa.NFA()
         self.start = None
         self.end = None
+        self.cur_group = 1
 
     def get_nfa(self):
         self.nfa.set_start_state(self.start)
@@ -319,11 +324,16 @@ class NFABuilder(Visitor):
         s2 = self.nfa.add_state()
 
         # TODO: add memory interface for NFA
+        if node.get_group_name() is not None:
+            group = node.get_group_name()
+        else:
+            group = self.cur_group
+            self.cur_group += 1
 
         l1, l2 = node.get_child().accept(self)
 
-        self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
-        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
+        self.nfa.add_transition(s1, l1, fa.EpsilonMatcher(), start_group=group)
+        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher(), end_group=group)
 
         self.start = s1
         self.end = s2
@@ -421,7 +431,7 @@ class RegexParser:
             atom = Literal(RegexParser._advance(it))
 
         return RegexParser._parse_quantifier(it, atom)
-    
+
     @staticmethod
     def _parse_anchor(it):
         c = RegexParser._advance(it)

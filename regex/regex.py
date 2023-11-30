@@ -16,4 +16,7 @@ class Regex:
     def search(self, s: "str"):
         return self.nfa.search(s)
 
+    def dump(self):
+        return self.nfa.dump()
+
     pass

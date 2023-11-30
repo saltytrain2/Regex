@@ -1,6 +1,9 @@
 from abc import ABC, abstractmethod
 from collections import deque
-from typing import Iterable
+from typing import Iterable, Union
+
+import networkx as nx
+import graphviz as gviz
 
 
 class State:
@@ -10,6 +13,9 @@ class State:
 
     def add_transition(self, transition):
         self.transitions.append(transition)
+
+    def edges(self):
+        return [(self.name, t.get_target_name()) for t in self.transitions]
 
     def get_name(self):
         return self.name
@@ -25,9 +31,15 @@ class State:
 
 
 class Transition:
-    def __init__(self, match_symbol, target_state):
+    def __init__(self, match_symbol, target_name, target_state, start_group, end_group):
         self.match_symbol = match_symbol
+        self.target_name = target_name
         self.target_state = target_state
+        self.start_group = start_group
+        self.end_group = end_group
+    
+    def get_target_name(self):
+        return self.target_name
 
     def match(self, input, i):
         return self.match_symbol.match(input, i)
@@ -37,6 +49,9 @@ class Transition:
 
     def is_epsilon_transition(self):
         return self.match_symbol.is_epsilon()
+
+    def log(self):
+        return self.match_symbol.log()
 
 
 class Matcher(ABC):
@@ -69,13 +84,14 @@ class CharacterMatcher(Matcher):
 
 class EpsilonMatcher(Matcher):
     def log(self):
-        return "e"
+        return "ε"
 
     def match(self, input, i):
         return True
 
     def is_epsilon(self):
         return True
+
 
 class RangeMatcher(Matcher):
     def __init__(self, start, end):
@@ -118,6 +134,14 @@ class TraversalState:
         return self.index
 
 
+class Match:
+    def __init__(self):
+        self.groups: dict[str] = {}
+
+    def group(self, i: Union[str, int]):
+        return self.groups[i]
+
+
 class NFA:
     def __init__(self):
         self.states = {}
@@ -135,9 +159,33 @@ class NFA:
         self.states[state] = State(state)
         return state
 
-    def add_transition(self, start, end, match):
+    def add_group(self):
+        self.num_groups += 1
+        return self.num_groups - 1
+
+    def add_transition(self, start, end, match, start_group=None, end_group=None):
         assert start in self.states and end in self.states
-        self.states[start].add_transition(Transition(match, self.states[end]))
+        self.states[start].add_transition(Transition(match, end, self.states[end], start_group, end_group))
+
+    def dump(self, output_file="./nfa.pdf", format="pdf"):
+        graph = gviz.Digraph("nfa", format=format)
+        
+        for state_name in self.states.keys():
+            shape = "circle" if state_name not in self.end_states else "doublecircle"
+            graph.node(state_name, label=state_name, shape=shape)
+        
+        for state_name in self.states:
+            for transitions in self.states[state_name]:
+                graph.edge(
+                    state_name,
+                    transitions.get_target_name(),
+                    label=transitions.log(),
+                )
+
+        graph.node("_", shape="point")
+        graph.edge("_", self.start_state)
+
+        graph.render(directory=".")
 
     def search(self, s: str):
         """If any substring in s matches, this returns true
