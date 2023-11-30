@@ -23,8 +23,26 @@ class TestRegex(unittest.TestCase):
         self.assertTrue(r.search(""))
         self.assertTrue(r.search("aaaa"))
 
+        r = Regex(r"ab*|cd")
+        self.assertFalse(r.search("c"))
+        self.assertTrue(r.search("cd"))
+        self.assertTrue(r.search("ab"))
+        self.assertTrue(r.search("a"))
+
     def test_kleene_plus(self):
         r = Regex(r"a+")
 
         self.assertFalse(r.search(""))
         self.assertTrue(r.search("a"))
+
+    def test_group(self):
+        r = Regex(r"a(b)*")
+
+        self.assertTrue(r.search("a"))
+        self.assertTrue(r.search("ab"))
+
+        r = Regex(r"a(b|c)+")
+
+        self.assertTrue(r.search("abc"))
+        self.assertTrue(r.search("ac"))
+        self.assertFalse(r.search("ad"))
