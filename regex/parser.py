@@ -91,9 +91,10 @@ class Sequence(BinaryOperator):
     this is always the root node of any regex
     """
 
-    def __init__(self, r1, r2):
+    def __init__(self, r1, r2, capture=False):
         super().__init__(r1, r2)
-    
+        self.capture = capture
+
     def item(self):
         return "->"
 
@@ -142,6 +143,19 @@ class KleenePlus(UnaryOperator):
     def accept(self, visitor):
         return visitor.visit_kleene_plus(self)
 
+class Group(UnaryOperator):
+    """Matches a singular expression that may or may not be captured
+    """
+
+    def __init__(self, regex):
+        super().__init__(regex)
+
+    def item(self):
+        return "()"
+
+    def accept(self, visitor):
+        return visitor.visit_group(self)
+
 
 class Range(BinaryOperator):
     """Matches a range of character literals, by ascii value
@@ -149,6 +163,42 @@ class Range(BinaryOperator):
 
     def __init__(self, r1, r2):
         super().__init__(r1, r2)
+
+
+class Dot(AST):
+    """Matches anything except a newline
+    """
+
+    def __init__(self, flags=""):
+        self.flags = ""
+
+    def item(self):
+        return "."
+
+    def accept(self, visitor):
+        return visitor.visit_dot(self)
+
+
+class StartAnchor(AST):
+    """Matches the start of the string
+    """
+
+    def item(self):
+        return "^"
+
+    def accept(self, visitor):
+        return visitor.visit_start_anchor(self)
+
+
+class EndAnchor(AST):
+    """Matches the end of the string
+    """
+
+    def item(self):
+        return "$"
+
+    def accept(self, visitor):
+        return visitor.visit_end_anchor(self)
 
 
 class Visitor(ABC):
@@ -176,6 +226,10 @@ class Visitor(ABC):
     def visit_kleene_plus(self, node: KleenePlus):
         pass
 
+    @abstractmethod
+    def visit_group(self, node: Group):
+        pass
+
 
 class NFABuilder(Visitor):
     def __init__(self):
@@ -198,19 +252,14 @@ class NFABuilder(Visitor):
         return (s1, s2)
 
     def visit_sequence(self, node: Sequence):
-        s1 = self.nfa.add_state()
-        s2 = self.nfa.add_state()
-
         l1, l2 = node.get_left().accept(self)
         r1, r2 = node.get_right().accept(self)
 
         self.nfa.add_transition(l2, r1, fa.EpsilonMatcher())
-        self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
-        self.nfa.add_transition(r2, s2, fa.EpsilonMatcher())
-        
-        self.start = s1
-        self.end = s2
-        return (s1, s2)
+
+        self.start = l1
+        self.end = r2
+        return (l1, r2)
 
     def visit_epsilon(self, node: Epsilon):
         s1 = self.nfa.add_state()
@@ -260,11 +309,25 @@ class NFABuilder(Visitor):
         self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
         self.nfa.add_transition(l2, l1, fa.EpsilonMatcher())
         self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
-        
+
         self.start = s1
         self.end = s2
         return (s1, s2)
-    
+
+    def visit_group(self, node):
+        s1 = self.nfa.add_state()
+        s2 = self.nfa.add_state()
+
+        # TODO: add memory interface for NFA
+
+        l1, l2 = node.get_child().accept(self)
+
+        self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
+        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
+
+        self.start = s1
+        self.end = s2
+        return (s1, s2)
 
 
 class ParserError(RuntimeError):
@@ -272,18 +335,25 @@ class ParserError(RuntimeError):
 
 
 class RegexParser:
+    METACHARS = set("[()^$")
+    SPECIALCHARS = set("sSdDwW")
+    QUANTIFIERS = set("*+?")
+    ANCHORS = set("^$")
+    SPECIALANCHORS = set("bB")
+    INVALID_START_CHAR = set(")|")
+
     @staticmethod
     def _lex(regex):
         # for now, each character in the symbol represents their own lexeme
         return list(regex)
-    
+
     @staticmethod
     def parse(regex):
         it = peekable(RegexParser._lex(regex))
         ast = RegexParser._parse_expr(it)
-        assert RegexParser._eof(it)
+        assert RegexParser._eof(it)  # must match entire regex
         return ast
-    
+
     @staticmethod
     def _advance(it):
         return next(it)
@@ -293,13 +363,20 @@ class RegexParser:
         return it.peek("")
 
     @staticmethod
+    def _peek_ahead(it, i):
+        try:
+            return it[:i]
+        except IndexError:
+            return ""
+
+    @staticmethod
     def _eof(it):
         return RegexParser._peek(it) == ""
 
     @staticmethod
     def _expect(it, *args):
         if RegexParser._peek(it) not in set(args):
-            raise ParserError(f"Invalid character {RegexParser._peek(it)}")
+            raise ParserError(f"Expected one of {''.join(list(args))}, received {RegexParser._peek(it)}")
 
     @staticmethod
     def _consume(it, c):
@@ -310,37 +387,69 @@ class RegexParser:
     def _parse_expr(it):
         lhs = RegexParser._parse_term(it)
 
-        if RegexParser._eof(it):
-            return lhs
-
         if RegexParser._peek(it) == "|":
             RegexParser._advance(it)
             return Or(lhs, RegexParser._parse_expr(it))
-        
-        return Sequence(lhs, RegexParser._parse_expr(it))
+
+        return lhs
 
     @staticmethod
     def _parse_term(it):
-        return RegexParser._parse_atom(it)
+        lhs = RegexParser._parse_atom(it)
+
+        if RegexParser._eof(it) or RegexParser._peek(it) in RegexParser.INVALID_START_CHAR:
+            return lhs
+
+        return Sequence(lhs, RegexParser._parse_term(it))
 
     @staticmethod
     def _parse_atom(it):
-        match RegexParser._peek(it):
-            case "":
-                atom = Epsilon()
-            case _:
-                atom = Literal(RegexParser._advance(it))
+        c = RegexParser._peek(it)
 
-        return RegexParser._parse_metachar(it, atom)
+        if c == "(":
+            atom = RegexParser._parse_group(it)
+        elif c == ".":
+            RegexParser._advance(it)
+            atom = Dot()
+        elif c == "[":
+            atom = RegexParser._parse_set(it)
+        elif c in RegexParser.ANCHORS:
+            return RegexParser._parse_anchor(it)
+        elif c == "" or c == "|":
+            return Epsilon()
+        else:
+            atom = Literal(RegexParser._advance(it))
+
+        return RegexParser._parse_quantifier(it, atom)
+    
+    @staticmethod
+    def _parse_anchor(it):
+        c = RegexParser._advance(it)
+
+        if c == "$":
+            return EndAnchor()
+        elif c == "^":
+            return StartAnchor()
 
     @staticmethod
-    def _parse_metachar(it, atom):
-        match RegexParser._peek(it):
-            case "*":
-                RegexParser._advance(it)
-                return KleeneStar(atom)
-            case "+":
-                RegexParser._advance(it)
-                return KleenePlus(atom)
-            case _:
-                return atom
+    def _parse_set(it):
+        RegexParser._consume(it, "[")
+        RegexParser._consume(it, "]")
+
+    @staticmethod
+    def _parse_group(it):
+        RegexParser._consume(it, "(")
+        group = Group(RegexParser._parse_expr(it))
+        RegexParser._consume(it, ")")
+        return group
+
+    @staticmethod
+    def _parse_quantifier(it, atom):
+        if RegexParser._peek(it) not in RegexParser.QUANTIFIERS:
+            return atom
+
+        meta = RegexParser._advance(it)
+        if meta == "*":
+            return KleeneStar(atom)
+        elif meta == "+":
+            return KleenePlus(atom)

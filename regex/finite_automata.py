@@ -73,7 +73,7 @@ class EpsilonMatcher(Matcher):
 
     def match(self, input, i):
         return True
-    
+
     def is_epsilon(self):
         return True
 
@@ -110,12 +110,13 @@ class TraversalState:
     def __init__(self, index: int, state: str):
         self.index = index
         self.state = state
-    
+
     def get_state(self):
         return self.state
 
     def get_index(self):
         return self.index
+
 
 class NFA:
     def __init__(self):
@@ -133,7 +134,7 @@ class NFA:
         state = "q" + str(len(self.states))
         self.states[state] = State(state)
         return state
-    
+
     def add_transition(self, start, end, match):
         assert start in self.states and end in self.states
         self.states[start].add_transition(Transition(match, self.states[end]))
@@ -142,7 +143,7 @@ class NFA:
         """If any substring in s matches, this returns true
         """
         paths = deque([TraversalState(0, self.start_state)])
-        
+
         while paths:
             path = paths.popleft()
 
