@@ -46,3 +46,17 @@ class TestRegex(unittest.TestCase):
         self.assertTrue(r.search("abc"))
         self.assertTrue(r.search("ac"))
         self.assertFalse(r.search("ad"))
+
+    def test_set(self):
+        r = Regex(r"ab[abc]")
+        self.assertTrue(r.search("aba"))
+        self.assertTrue(r.search("abb"))
+        self.assertTrue(r.search("abc"))
+
+        r = Regex(r"[a-z]")
+        self.assertTrue(r.search("a"))
+        self.assertTrue(r.search("w"))
+
+        r = Regex(r"(a+|b*c)[]-][a-z]")
+        self.assertTrue(r.search("a-w"))
+        self.assertTrue(r.search("c]a"))

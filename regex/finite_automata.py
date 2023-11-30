@@ -51,7 +51,13 @@ class Transition:
         return self.match_symbol.is_epsilon()
 
     def log(self):
-        return self.match_symbol.log()
+        edge_str = self.match_symbol.log()
+        if self.start_group is not None:
+            edge_str += f"\nStart: {self.start_group}"
+        elif self.end_group is not None:
+            edge_str += f"\nEnd: {self.end_group}"
+
+        return edge_str
 
 
 class Matcher(ABC):
@@ -167,7 +173,7 @@ class NFA:
         assert start in self.states and end in self.states
         self.states[start].add_transition(Transition(match, end, self.states[end], start_group, end_group))
 
-    def dump(self, output_file="./nfa.pdf", format="pdf"):
+    def dump(self, output_file="./nfa", format="pdf"):
         graph = gviz.Digraph("nfa", format=format)
         
         for state_name in self.states.keys():
@@ -185,7 +191,7 @@ class NFA:
         graph.node("_", shape="point")
         graph.edge("_", self.start_state)
 
-        graph.render(directory=".")
+        graph.render(directory=".", engine="dot")
 
     def search(self, s: str):
         """If any substring in s matches, this returns true
