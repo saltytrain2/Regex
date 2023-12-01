@@ -191,7 +191,7 @@ class NFA:
         graph.node("_", shape="point")
         graph.edge("_", self.start_state)
 
-        graph.render(directory=".", engine="dot")
+        graph.render(directory=".", engine="dot", cleanup=True)
 
     def search(self, s: str):
         """If any substring in s matches, this returns true

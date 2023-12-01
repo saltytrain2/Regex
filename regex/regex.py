@@ -1,4 +1,4 @@
-from .parser import RegexParser, NFABuilder
+from .parser import parse, NFABuilder
 
 
 class Regex:
@@ -7,7 +7,7 @@ class Regex:
         self.nfa = self.build_nfa(regex, opt)
 
     def build_nfa(self, regex, opt):
-        ast = RegexParser.parse(regex)
+        ast = parse(regex)
         builder = NFABuilder()
 
         ast.accept(builder)

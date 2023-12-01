@@ -370,166 +370,167 @@ class ParserError(RuntimeError):
     pass
 
 
-class RegexParser:
-    GLOBAL_METACHARS = set(r"\^$[.|()?*+{")
-    SET_METACHARS = set(r"\^-[]")
-    SPECIALCHARS = set("sSdDwW")
-    QUANTIFIERS = set("*+?")
-    ANCHORS = set("^$")
-    SPECIALANCHORS = set("bB")
-    INVALID_START_CHAR = set(")|")
+GLOBAL_METACHARS = set(r"\^$[.|()?*+{")
+SET_METACHARS = set(r"\^-[]")
+SPECIALCHARS = set("sSdDwW")
+QUANTIFIERS = set("*+?")
+ANCHORS = set("^$")
+SPECIALANCHORS = set("bB")
+INVALID_START_CHAR = set(")|")
+IT = None
 
-    IT = None
 
-    @staticmethod
-    def _lex(regex):
-        # for now, each character in the symbol represents their own lexeme
-        return list(regex)
+def _lex(regex):
+    # for now, each character in the symbol represents their own lexeme
+    return list(regex)
 
-    @staticmethod
-    def parse(regex):
-        RegexParser.IT = peekable(RegexParser._lex(regex))
-        ast = RegexParser._parse_expr()
-        assert RegexParser._eof()  # must match entire regex
-        return ast
 
-    @staticmethod
-    def _advance():
-        return next(RegexParser.IT)
+def parse(regex):
+    global IT
+    IT = peekable(_lex(regex))
+    ast = _parse_expr()
+    assert _eof()  # must match entire regex
+    return ast
 
-    @staticmethod
-    def _peek():
-        return RegexParser.IT.peek("")
 
-    @staticmethod
-    def _peek_ahead(i):
-        try:
-            return "".join(RegexParser.IT[:i])
-        except IndexError:
-            return ""
+def _advance():
+    global IT
+    return next(IT)
 
-    @staticmethod
-    def _eof():
-        return RegexParser._peek() == ""
 
-    @staticmethod
-    def _expect(*args):
-        if RegexParser._peek() not in set(args):
-            raise ParserError(f"Expected one of {''.join(list(args))}, received {RegexParser._peek()}")
+def _peek():
+    return IT.peek("")
 
-    @staticmethod
-    def _consume(c):
-        RegexParser._expect(c)
-        return RegexParser._advance()
 
-    @staticmethod
-    def _parse_expr():
-        lhs = RegexParser._parse_term()
+def _peek_ahead(i):
+    try:
+        return "".join(IT[:i])
+    except IndexError:
+        return ""
 
-        if RegexParser._peek() == "|":
-            RegexParser._advance()
-            return Or(lhs, RegexParser._parse_expr())
 
+def _eof():
+    return _peek() == ""
+
+
+def _expect(*args):
+    if _peek() not in set(args):
+        raise ParserError(f"Expected one of {''.join(list(args))}, received {_peek()}")
+
+
+def _consume(c):
+    _expect(c)
+    return _advance()
+
+
+def _parse_expr():
+    lhs = _parse_term()
+
+    if _peek() == "|":
+        _advance()
+        return Or(lhs, _parse_expr())
+
+    return lhs
+
+
+def _parse_term():
+    lhs = _parse_atom()
+
+    if _eof() or _peek() in INVALID_START_CHAR:
         return lhs
 
-    @staticmethod
-    def _parse_term():
-        lhs = RegexParser._parse_atom()
+    return Sequence(lhs, _parse_term())
 
-        if RegexParser._eof() or RegexParser._peek() in RegexParser.INVALID_START_CHAR:
-            return lhs
 
-        return Sequence(lhs, RegexParser._parse_term())
+def _parse_atom():
+    c = _peek()
 
-    @staticmethod
-    def _parse_atom():
-        c = RegexParser._peek()
+    if c == "(":
+        atom = _parse_group()
+    elif c == ".":
+        _advance()
+        atom = Dot()
+    elif c == "[":
+        atom = _parse_set()
+    elif c in ANCHORS:
+        return _parse_anchor()
+    elif c == "|":
+        return Epsilon()
+    else:
+        atom = _parse_literal(GLOBAL_METACHARS)
 
-        if c == "(":
-            atom = RegexParser._parse_group()
-        elif c == ".":
-            RegexParser._advance()
-            atom = Dot()
-        elif c == "[":
-            atom = RegexParser._parse_set()
-        elif c in RegexParser.ANCHORS:
-            return RegexParser._parse_anchor()
-        elif c == "|":
-            return Epsilon()
-        else:
-            atom = RegexParser._parse_literal(RegexParser.GLOBAL_METACHARS)
+    return _parse_quantifier(atom)
 
-        return RegexParser._parse_quantifier(atom)
 
-    @staticmethod
-    def _parse_anchor():
-        c = RegexParser._advance()
+def _parse_anchor():
+    c = _advance()
 
-        if c == "$":
-            return EndAnchor()
-        elif c == "^":
-            return StartAnchor()
+    if c == "$":
+        return EndAnchor()
+    elif c == "^":
+        return StartAnchor()
 
-    @staticmethod
-    def _parse_set():
-        RegexParser._consume("[")
-        regex_set = RegexParser._parse_set_items()
-        RegexParser._consume("]")
-        return regex_set
 
-    @staticmethod
-    def _parse_set_literal():
-        return RegexParser._parse_literal(RegexParser.SET_METACHARS)
+def _parse_set():
+    _consume("[")
+    regex_set = _parse_set_items()
+    _consume("]")
+    return regex_set
 
-    @staticmethod
-    def _parse_regex_literal():
-        return RegexParser._parse_literal(RegexParser.GLOBAL_METACHARS)
 
-    @staticmethod
-    def _parse_literal(metachars: set):
-        if RegexParser._peek() == "":
-            return Epsilon()
+def _parse_set_literal():
+    return _parse_literal(SET_METACHARS)
 
-        if RegexParser._peek() == "\\":
-            RegexParser._advance()
 
-            # still need to do octal numbers
-            if RegexParser._peek() not in metachars:
-                raise ParserError(f"Meaningless escaped char {RegexParser._peek()}")
+def _parse_regex_literal():
+    return _parse_literal(GLOBAL_METACHARS)
 
-        return Literal(RegexParser._advance())
 
-    @staticmethod
-    def _parse_set_items():
-        lhs = RegexParser._parse_set_literal()
+def _parse_literal(metachars: set):
+    if _peek() == "":
+        return Epsilon()
 
-        if RegexParser._peek() == "-" and RegexParser._peek_ahead(2) != "-]":
-            try:
-                tmp = deepcopy(RegexParser.IT)
-                RegexParser._advance()
-                lhs = Range(lhs.item(), RegexParser._parse_set_literal().item())
-            except ParserError:
-                RegexParser.IT = tmp
+    if _peek() == "\\":
+        _advance()
 
-        if RegexParser._peek() == "]":
-            return lhs
-        else:
-            return Or(lhs, RegexParser._parse_set_items())
+        # still need to do octal numbers
+        if _peek() not in metachars:
+            raise ParserError(f"Meaningless escaped char {_peek()}")
 
-    @staticmethod
-    def _parse_group():
-        RegexParser._consume("(")
-        group = Group(RegexParser._parse_expr())
-        RegexParser._consume(")")
-        return group
+    return Literal(_advance())
 
-    @staticmethod
-    def _parse_quantifier(atom):
-        if RegexParser._peek() not in RegexParser.QUANTIFIERS:
-            return atom
 
-        meta = RegexParser._advance()
-        if meta == "*":
-            return KleeneStar(atom)
-        elif meta == "+":
-            return KleenePlus(atom)
+def _parse_set_items():
+    lhs = _parse_set_literal()
+
+    if _peek() == "-" and _peek_ahead(2) != "-]":
+        try:
+            global IT
+            tmp = deepcopy(IT)
+            _advance()
+            lhs = Range(lhs.item(), _parse_set_literal().item())
+        except ParserError:
+            IT = tmp
+
+    if _peek() == "]":
+        return lhs
+    else:
+        return Or(lhs, _parse_set_items())
+
+
+def _parse_group():
+    _consume("(")
+    group = Group(_parse_expr())
+    _consume(")")
+    return group
+
+
+def _parse_quantifier(atom):
+    if _peek() not in QUANTIFIERS:
+        return atom
+
+    meta = _advance()
+    if meta == "*":
+        return KleeneStar(atom)
+    elif meta == "+":
+        return KleenePlus(atom)
