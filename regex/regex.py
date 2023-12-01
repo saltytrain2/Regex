@@ -12,11 +12,15 @@ class Regex:
 
         ast.accept(builder)
         return builder.get_nfa()
-        
+
     def search(self, s: "str"):
         return self.nfa.search(s)
 
-    def dump(self):
-        return self.nfa.dump()
+    def dump(self, filename="nfa", filepath=".", format="pdf"):
+        return self.nfa.dump(filename, filepath, format)
 
     pass
+
+
+def search(regex: str, s: str):
+    return Regex(regex).search(s)

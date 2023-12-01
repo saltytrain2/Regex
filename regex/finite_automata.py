@@ -173,8 +173,8 @@ class NFA:
         assert start in self.states and end in self.states
         self.states[start].add_transition(Transition(match, end, self.states[end], start_group, end_group))
 
-    def dump(self, output_file="./nfa", format="pdf"):
-        graph = gviz.Digraph("nfa", format=format)
+    def dump(self, filename: str, filepath: str, format: str):
+        graph = gviz.Digraph(filename, format=format)
         
         for state_name in self.states.keys():
             shape = "circle" if state_name not in self.end_states else "doublecircle"
@@ -191,7 +191,7 @@ class NFA:
         graph.node("_", shape="point")
         graph.edge("_", self.start_state)
 
-        graph.render(directory=".", engine="dot", cleanup=True)
+        graph.render(directory=filepath, engine="dot", cleanup=True)
 
     def search(self, s: str):
         """If any substring in s matches, this returns true
