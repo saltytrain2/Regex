@@ -221,15 +221,15 @@ class EndAnchor(AST):
 
 class Visitor(ABC):
     @abstractmethod
-    def visit_literal(self, node):
+    def visit_literal(self, node: Literal):
         pass
 
     @abstractmethod
-    def visit_sequence(self, node):
+    def visit_sequence(self, node: Sequence):
         pass
 
     @abstractmethod
-    def visit_epsilon(self, node):
+    def visit_epsilon(self, node: Epsilon):
         pass
 
     @abstractmethod
