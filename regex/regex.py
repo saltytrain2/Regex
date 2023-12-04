@@ -25,6 +25,9 @@ class Regex:
     def dump(self, filename="nfa", filepath=".", format="pdf"):
         return self.nfa.dump(filename, filepath, format)
 
+    def findall(self, s: str):
+        return [g.group(0) for g in self.finditer(s)]
+
     pass
 
 

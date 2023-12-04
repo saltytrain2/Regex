@@ -378,6 +378,15 @@ SPECIALANCHORS = set("bB")
 INVALID_START_CHAR = set(")|")
 IT = None
 
+CHAR_ESCAPE_SEQS = {
+    "a": "\x07",
+    "e": "\x1e",
+    "f": "\x0c",
+    "n": "\x0a",
+    "r": "\x0d",
+    "t": "\x09",
+}
+
 
 def _lex(regex):
     # for now, each character in the symbol represents their own lexeme
@@ -455,6 +464,8 @@ def _parse_atom():
         return _parse_anchor()
     elif c == "|":
         return Epsilon()
+    elif c == "\\":
+        atom = _parse_escape(GLOBAL_METACHARS)
     else:
         atom = _parse_literal(GLOBAL_METACHARS)
 
@@ -510,6 +521,29 @@ def _parse_set_items():
         return lhs
     else:
         return Or(lhs, _parse_set_items())
+
+
+def _parse_escape():
+    c = _peek()
+
+    if not c.isalnum():
+        return Literal(_advance())
+    elif c.isdigit():
+        num = _parse_digit(3)
+        pass
+    elif c in CHAR_ESCAPE_SEQS:
+        return Literal(CHAR_ESCAPE_SEQS[_advance()])
+    pass
+
+
+def _parse_digit(max_digits: int = None):
+    ret = ""
+    counter = 0
+
+    while (max_digits is None or counter < max_digits) and _peek().isdigit():
+        ret += _advance()
+
+    return ret
 
 
 def _parse_group():
