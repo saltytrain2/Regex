@@ -314,10 +314,10 @@ class NFABuilder(Visitor):
         l1, l2 = node.get_child().accept(self)
 
         # this is currently a non-greedy match
+        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
         self.nfa.add_transition(s1, s2, fa.EpsilonMatcher())
         self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
         self.nfa.add_transition(l2, l1, fa.EpsilonMatcher())
-        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
 
         self.start = s1
         self.end = s2
@@ -330,8 +330,8 @@ class NFABuilder(Visitor):
         l1, l2 = node.get_child().accept(self)
 
         self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
-        self.nfa.add_transition(l2, l1, fa.EpsilonMatcher())
         self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
+        self.nfa.add_transition(l2, l1, fa.EpsilonMatcher())
 
         self.start = s1
         self.end = s2
@@ -504,13 +504,8 @@ def _parse_set_items():
     lhs = _parse_set_literal()
 
     if _peek() == "-" and _peek_ahead(2) != "-]":
-        try:
-            global IT
-            tmp = deepcopy(IT)
-            _advance()
-            lhs = Range(lhs.item(), _parse_set_literal().item())
-        except ParserError:
-            IT = tmp
+        _advance()
+        lhs = Range(lhs.item(), _parse_set_literal().item())
 
     if _peek() == "]":
         return lhs

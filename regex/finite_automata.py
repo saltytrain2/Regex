@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
-from collections import deque
+from dataclasses import dataclass
 from typing import Iterable, Union
 
-import networkx as nx
 import graphviz as gviz
 
 
@@ -37,7 +36,7 @@ class Transition:
         self.target_state = target_state
         self.start_group = start_group
         self.end_group = end_group
-    
+
     def get_target_name(self):
         return self.target_name
 
@@ -129,23 +128,42 @@ class GroupMatcher(Matcher):
 
 
 class TraversalState:
-    def __init__(self, index: int, state: str):
-        self.index = index
+    def __init__(self, start: int, end: int, state: str):
+        self.start = start
+        self.end = end
         self.state = state
 
     def get_state(self):
         return self.state
 
-    def get_index(self):
-        return self.index
+    def get_start(self):
+        return self.start
+
+    def get_end(self):
+        return self.end
 
 
 class Match:
-    def __init__(self):
-        self.groups: dict[str] = {}
+    @dataclass
+    class _Match:
+        start: int
+        end: int
+        substr: str
+
+    def __init__(self, traversal_state: TraversalState, s: str):
+        self.groups: dict[str][self._Match] = {}
+        self._add_groups(traversal_state, s)
 
     def group(self, i: Union[str, int]):
-        return self.groups[i]
+        return self.groups[i].substr
+
+    def _add_groups(self, traversal_state, s):
+        # for now, only add biggest group
+        self.groups[0] = self._Match(
+            traversal_state.get_start(),
+            traversal_state.get_end(),
+            s[traversal_state.get_start():traversal_state.get_end()],
+        )
 
 
 class NFA:
@@ -175,11 +193,11 @@ class NFA:
 
     def dump(self, filename: str, filepath: str, format: str):
         graph = gviz.Digraph(filename, format=format)
-        
+
         for state_name in self.states.keys():
             shape = "circle" if state_name not in self.end_states else "doublecircle"
             graph.node(state_name, label=state_name, shape=shape)
-        
+
         for state_name in self.states:
             for transitions in self.states[state_name]:
                 graph.edge(
@@ -193,26 +211,27 @@ class NFA:
 
         graph.render(directory=filepath, engine="dot", cleanup=True)
 
-    def search(self, s: str):
+    def search(self, s: str, start=0):
         """If any substring in s matches, this returns true
         """
-        paths = deque([TraversalState(0, self.start_state)])
+        paths = [TraversalState(start, start, self.start_state)]
 
         while paths:
-            path = paths.popleft()
+            path = paths.pop()
 
             if path.get_state() in self.end_states:
-                return True
+                return Match(path, s)
 
             for transition in self.states[path.get_state()]:
-                if transition.match(s, path.get_index()):
+                if transition.match(s, path.get_end()):
                     paths.append(
                         TraversalState(
-                            path.get_index() + (0 if transition.is_epsilon_transition() else 1),
+                            path.get_start(),
+                            path.get_end() + (0 if transition.is_epsilon_transition() else 1),
                             transition.get_target_state().get_name(),
                         )
                     )
 
-        return False
+        return None
 
 
