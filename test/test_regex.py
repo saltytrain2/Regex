@@ -29,6 +29,9 @@ class TestRegex(unittest.TestCase):
         self.assertEqual(r.search("ab").group(0), "ab")
         self.assertEqual(r.search("a").group(0), "a")
 
+        r = Regex(r"(|a)*")
+        self.assertEqual(r.search("aaaab").group(0), "aaaa")
+
     def test_kleene_plus(self):
         r = Regex(r"a+")
 

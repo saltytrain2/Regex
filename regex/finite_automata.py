@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Iterable, Union
+from copy import deepcopy
 
 import graphviz as gviz
 
@@ -128,10 +129,11 @@ class GroupMatcher(Matcher):
 
 
 class TraversalState:
-    def __init__(self, start: int, end: int, state: str):
+    def __init__(self, start: int, end: int, state: str, cur_cycle: set[str]):
         self.start = start
         self.end = end
         self.state = state
+        self.cur_cycle = cur_cycle
 
     def get_state(self):
         return self.state
@@ -141,6 +143,9 @@ class TraversalState:
 
     def get_end(self):
         return self.end
+
+    def get_cur_cycle(self):
+        return self.cur_cycle
 
 
 class Match:
@@ -214,7 +219,7 @@ class NFA:
     def search(self, s: str, start=0):
         """If any substring in s matches, this returns true
         """
-        paths = [TraversalState(start, start, self.start_state)]
+        paths = [TraversalState(start, start, self.start_state, set())]
 
         while paths:
             path = paths.pop()
@@ -224,11 +229,20 @@ class NFA:
 
             for transition in self.states[path.get_state()]:
                 if transition.match(s, path.get_end()):
+                    if transition.is_epsilon_transition() and path.get_state() in path.get_cur_cycle():
+                        continue
+                    elif transition.is_epsilon_transition():
+                        new_cycle = set(path.get_cur_cycle())
+                        new_cycle.add(path.get_state())
+                    else:
+                        new_cycle = set()
+
                     paths.append(
                         TraversalState(
                             path.get_start(),
                             path.get_end() + (0 if transition.is_epsilon_transition() else 1),
                             transition.get_target_state().get_name(),
+                            new_cycle,
                         )
                     )
 
