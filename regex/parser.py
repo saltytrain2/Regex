@@ -1,4 +1,8 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
+from typing import Optional, Union
+
 from . import finite_automata as fa
 
 from more_itertools import peekable
@@ -58,7 +62,7 @@ class Epsilon(AST):
     def item(self):
         return "e"
 
-    def accept(self, visitor: "Visitor"):
+    def accept(self, visitor: Visitor):
         return visitor.visit_epsilon(self)
 
 
@@ -74,6 +78,22 @@ class Literal(AST):
 
     def accept(self, visitor: "Visitor"):
         return visitor.visit_literal(self)
+
+
+class BackReference(AST):
+    """Matches a Backreference
+    """
+    def __init__(self, reference: Union[int, str]):
+        self.reference = reference
+
+    def item(self):
+        if isinstance(self.reference, int):
+            return "\\" + self.reference
+        else:
+            return self.reference
+    
+    def accept(self, visitor: Visitor):
+        return visitor.visit_backreference(self)
 
 
 class MetaChar(UnaryOperator):
@@ -147,12 +167,16 @@ class Group(UnaryOperator):
     """Matches a singular expression that may or may not be captured
     """
 
-    def __init__(self, regex, name=None):
+    def __init__(self, regex, num: Optional[int] = None, name: Optional[str] = None):
         super().__init__(regex)
-        self.group_name = None
+        self.num = num
+        self.group_name = name
 
     def item(self):
         return "()"
+    
+    def get_group_num(self):
+        return self.num
 
     def get_group_name(self):
         return self.group_name
@@ -251,6 +275,10 @@ class Visitor(ABC):
     def visit_range(self, node: Range):
         pass
 
+    @abstractmethod
+    def visit_backreference(self, node: BackReference):
+        pass
+
 
 class NFABuilder(Visitor):
     def __init__(self):
@@ -341,21 +369,15 @@ class NFABuilder(Visitor):
         s2 = self.nfa.add_state()
 
         # TODO: add memory interface for NFA
-        if node.get_group_name() is not None:
-            group = node.get_group_name()
-        else:
-            group = self.cur_group
-            self.cur_group += 1
-
         l1, l2 = node.get_child().accept(self)
 
-        self.nfa.add_transition(s1, l1, fa.EpsilonMatcher(), start_group=group)
-        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher(), end_group=group)
+        self.nfa.add_transition(s1, l1, fa.EpsilonMatcher(), start_group=node.get_group_num())
+        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher(), end_group=node.get_group_num())
 
         self.start = s1
         self.end = s2
         return (s1, s2)
-    
+
     def visit_range(self, node):
         s1 = self.nfa.add_state()
         s2 = self.nfa.add_state()
@@ -364,201 +386,225 @@ class NFABuilder(Visitor):
         self.end = s2
         return (s1, s2)
 
+    def visit_backreference(self, node):
+        s1 = self.nfa.add_state()
+        s2 = self.nfa.add_state()
+        self.start = s1
+        self.end = s2
+        return (s1, s2)
+        pass
+
 
 class ParserError(RuntimeError):
     pass
 
 
-GLOBAL_METACHARS = set(r"\^$[.|()?*+{")
-SET_METACHARS = set(r"\^-[]")
-SPECIALCHARS = set("sSdDwW")
-QUANTIFIERS = set("*+?")
-ANCHORS = set("^$")
-SPECIALANCHORS = set("bB")
-INVALID_START_CHAR = set(")|")
-IT = None
+class GroupManager:
+    def __init__(self):
+        self.next_group = 1
+        self.finished_groups = set()
 
-CHAR_ESCAPE_SEQS = {
-    "a": "\x07",
-    "e": "\x1e",
-    "f": "\x0c",
-    "n": "\x0a",
-    "r": "\x0d",
-    "t": "\x09",
-}
+    def get_next_group(self):
+        groupno = self.next_group
+        self.next_group += 1
+        return groupno
+
+    def finish_group(self, group):
+        self.finished_groups.add(group)
+
+    def is_finished(self, groupno: int):
+        return groupno in self.finished_groups
 
 
-def _lex(regex):
-    # for now, each character in the symbol represents their own lexeme
-    return list(regex)
+class RegexParser:
+    GLOBAL_METACHARS = set(r"\^$[.|()?*+{")
+    SET_METACHARS = set(r"\^-[]")
+    SPECIALCHARS = set("sSdDwW")
+    QUANTIFIERS = set("*+?")
+    ANCHORS = set("^$")
+    SPECIALANCHORS = set("bB")
+    INVALID_START_CHAR = set(")|")
+
+    CHAR_ESCAPE_SEQS = {
+        "a": "\x07",
+        "e": "\x1e",
+        "f": "\x0c",
+        "n": "\x0a",
+        "r": "\x0d",
+        "t": "\x09",
+    }
+
+    def __init__(self, regex):
+        self.it = peekable(self._lex(regex))
+        self.group_manager = GroupManager()
+
+    def _lex(self, regex):
+        # for now, each character in the symbol represents their own lexeme
+        return regex
+
+    def _start_group(self):
+        return self.group_manager.get_next_group()
+
+    def _finish_group(self, groupno):
+        self.group_manager.finish_group(groupno)
+
+    def parse(self):
+        ast = self._parse_expr()
+        assert self._eof()  # must match entire regex
+        return Group(ast, 0)
+
+    def _advance(self):
+        return next(self.it)
+
+    def _peek(self):
+        return self.it.peek("")
+
+    def _peek_ahead(self, i):
+        try:
+            return "".join(self.it[:i])
+        except IndexError:
+            return ""
+
+    def _eof(self):
+        return self._peek() == ""
+
+    def _expect(self, *args):
+        if self._peek() not in set(args):
+            raise ParserError(f"Expected one of {''.join(list(args))}, received {self._peek()}")
+
+    def _consume(self, c):
+        self._expect(c)
+        return self._advance()
+
+    def _parse_expr(self):
+        lhs = self._parse_term()
+
+        if self._peek() == "|":
+            self._advance()
+            return Or(lhs, self._parse_expr())
+
+        return lhs
+
+    def _parse_term(self):
+        lhs = self._parse_atom()
+
+        if self._eof() or self._peek() in self.INVALID_START_CHAR:
+            return lhs
+
+        return Sequence(lhs, self._parse_term())
+
+    def _parse_atom(self):
+        c = self._peek()
+
+        if c == "(":
+            atom = self._parse_group()
+        elif c == ".":
+            self._advance()
+            atom = Dot()
+        elif c == "[":
+            atom = self._parse_set()
+        elif c in self.ANCHORS:
+            return self._parse_anchor()
+        elif c == "|":
+            return Epsilon()
+        elif c == "\\":
+            atom = self._parse_escape(self.GLOBAL_METACHARS)
+        else:
+            atom = self._parse_literal(self.GLOBAL_METACHARS)
+
+        return self._parse_quantifier(atom)
+
+    def _parse_anchor(self):
+        c = self._advance()
+
+        if c == "$":
+            return EndAnchor()
+        elif c == "^":
+            return StartAnchor()
+
+    def _parse_set(self):
+        self._consume("[")
+        regex_set = self._parse_set_items()
+        self._consume("]")
+        return regex_set
+
+    def _parse_set_literal(self):
+        return self._parse_literal(self.SET_METACHARS)
+
+    def _parse_regex_literal(self):
+        return self._parse_literal(self.GLOBAL_METACHARS)
+
+    def _parse_literal(self, metachars: set):
+        if self._peek() == "":
+            return Epsilon()
+
+        if self._peek() == "\\":
+            self._advance()
+
+            # still need to do octal numbers
+            if self._peek() not in metachars:
+                raise ParserError(f"Meaningless escaped char {self._peek()}")
+
+        return Literal(self._advance())
+
+    def _parse_set_items(self):
+        lhs = self._parse_set_literal()
+
+        if self._peek() == "-" and self._peek_ahead(2) != "-]":
+            self._advance()
+            lhs = Range(lhs.item(), self._parse_set_literal().item())
+
+        if self._peek() == "]":
+            return lhs
+        else:
+            return Or(lhs, self._parse_set_items())
+
+    def _parse_escape(self):
+        c = self._peek()
+
+        if not c.isalnum(self):
+            return Literal(self._advance())
+        elif c.isdigit(self):
+            num = int(self._parse_digit(3))
+
+            if 1 <= num <= 9 or self.group_manager.is_finished(self, num):
+                if not self.group_manager.is_finished(self, num):
+                    raise ParserError(f"Invalid reference to group {num}")
+
+                return BackReference(num)
+
+            raise NotImplementedError("escape sequence not parsable yet")
+        elif c in self.CHAR_ESCAPE_SEQS:
+            return Literal(self.CHAR_ESCAPE_SEQS[self._advance()])
+        pass
+
+    def _parse_digit(self, max_digits: int = None):
+        ret = ""
+        counter = 0
+
+        while (self, max_digits is None or counter < max_digits) and self._peek().isdigit():
+            ret += self._advance()
+
+        return ret
+
+    def _parse_group(self):
+        groupno = self._start_group()
+        self._consume("(")
+        group = Group(self._parse_expr(), groupno)
+        self._consume(")")
+        self._finish_group(groupno)
+        return group
+
+    def _parse_quantifier(self, atom):
+        if self._peek() not in self.QUANTIFIERS:
+            return atom
+
+        meta = self._advance()
+        if meta == "*":
+            return KleeneStar(atom)
+        elif meta == "+":
+            return KleenePlus(atom)
 
 
 def parse(regex):
-    global IT
-    IT = peekable(_lex(regex))
-    ast = _parse_expr()
-    assert _eof()  # must match entire regex
-    return ast
-
-
-def _advance():
-    global IT
-    return next(IT)
-
-
-def _peek():
-    return IT.peek("")
-
-
-def _peek_ahead(i):
-    try:
-        return "".join(IT[:i])
-    except IndexError:
-        return ""
-
-
-def _eof():
-    return _peek() == ""
-
-
-def _expect(*args):
-    if _peek() not in set(args):
-        raise ParserError(f"Expected one of {''.join(list(args))}, received {_peek()}")
-
-
-def _consume(c):
-    _expect(c)
-    return _advance()
-
-
-def _parse_expr():
-    lhs = _parse_term()
-
-    if _peek() == "|":
-        _advance()
-        return Or(lhs, _parse_expr())
-
-    return lhs
-
-
-def _parse_term():
-    lhs = _parse_atom()
-
-    if _eof() or _peek() in INVALID_START_CHAR:
-        return lhs
-
-    return Sequence(lhs, _parse_term())
-
-
-def _parse_atom():
-    c = _peek()
-
-    if c == "(":
-        atom = _parse_group()
-    elif c == ".":
-        _advance()
-        atom = Dot()
-    elif c == "[":
-        atom = _parse_set()
-    elif c in ANCHORS:
-        return _parse_anchor()
-    elif c == "|":
-        return Epsilon()
-    elif c == "\\":
-        atom = _parse_escape(GLOBAL_METACHARS)
-    else:
-        atom = _parse_literal(GLOBAL_METACHARS)
-
-    return _parse_quantifier(atom)
-
-
-def _parse_anchor():
-    c = _advance()
-
-    if c == "$":
-        return EndAnchor()
-    elif c == "^":
-        return StartAnchor()
-
-
-def _parse_set():
-    _consume("[")
-    regex_set = _parse_set_items()
-    _consume("]")
-    return regex_set
-
-
-def _parse_set_literal():
-    return _parse_literal(SET_METACHARS)
-
-
-def _parse_regex_literal():
-    return _parse_literal(GLOBAL_METACHARS)
-
-
-def _parse_literal(metachars: set):
-    if _peek() == "":
-        return Epsilon()
-
-    if _peek() == "\\":
-        _advance()
-
-        # still need to do octal numbers
-        if _peek() not in metachars:
-            raise ParserError(f"Meaningless escaped char {_peek()}")
-
-    return Literal(_advance())
-
-
-def _parse_set_items():
-    lhs = _parse_set_literal()
-
-    if _peek() == "-" and _peek_ahead(2) != "-]":
-        _advance()
-        lhs = Range(lhs.item(), _parse_set_literal().item())
-
-    if _peek() == "]":
-        return lhs
-    else:
-        return Or(lhs, _parse_set_items())
-
-
-def _parse_escape():
-    c = _peek()
-
-    if not c.isalnum():
-        return Literal(_advance())
-    elif c.isdigit():
-        num = _parse_digit(3)
-        pass
-    elif c in CHAR_ESCAPE_SEQS:
-        return Literal(CHAR_ESCAPE_SEQS[_advance()])
-    pass
-
-
-def _parse_digit(max_digits: int = None):
-    ret = ""
-    counter = 0
-
-    while (max_digits is None or counter < max_digits) and _peek().isdigit():
-        ret += _advance()
-
-    return ret
-
-
-def _parse_group():
-    _consume("(")
-    group = Group(_parse_expr())
-    _consume(")")
-    return group
-
-
-def _parse_quantifier(atom):
-    if _peek() not in QUANTIFIERS:
-        return atom
-
-    meta = _advance()
-    if meta == "*":
-        return KleeneStar(atom)
-    elif meta == "+":
-        return KleenePlus(atom)
+    return RegexParser(regex).parse()

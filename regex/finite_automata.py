@@ -1,6 +1,8 @@
+from __future__ import annotations
+
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Iterable, Union
+from typing import Union
 from copy import deepcopy
 
 import graphviz as gviz
@@ -20,8 +22,7 @@ class State:
     def get_name(self):
         return self.name
 
-    def __hash__(self):
-        return hash(self.name)
+    def __hash__(self): return hash(self.name)
 
     def __str__(self):
         return self.name
@@ -30,13 +31,13 @@ class State:
         return iter(self.transitions)
 
 
+@dataclass
 class Transition:
-    def __init__(self, match_symbol, target_name, target_state, start_group, end_group):
-        self.match_symbol = match_symbol
-        self.target_name = target_name
-        self.target_state = target_state
-        self.start_group = start_group
-        self.end_group = end_group
+    match_symbol: Matcher
+    target_name: str
+    target_state: State
+    start_group: int | None
+    end_group: int | None
 
     def get_target_name(self):
         return self.target_name
@@ -49,6 +50,12 @@ class Transition:
 
     def is_epsilon_transition(self):
         return self.match_symbol.is_epsilon()
+
+    def is_starting_group(self):
+        return self.start_group is not None
+
+    def is_ending_group(self):
+        return self.end_group is not None
 
     def log(self):
         edge_str = self.match_symbol.log()
@@ -128,12 +135,20 @@ class GroupMatcher(Matcher):
         return False
 
 
+@dataclass
+class _Match:
+    start: int
+    end: int = None
+    substr: str = None
+
+
+@dataclass
 class TraversalState:
-    def __init__(self, start: int, end: int, state: str, cur_cycle: set[str]):
-        self.start = start
-        self.end = end
-        self.state = state
-        self.cur_cycle = cur_cycle
+    start: int
+    end: int
+    state: str
+    cur_cycle: set[str]
+    group: dict[Union[int, str]][_Match]
 
     def get_state(self):
         return self.state
@@ -147,16 +162,18 @@ class TraversalState:
     def get_cur_cycle(self):
         return self.cur_cycle
 
+    def start_group(self, name):
+        self.group[name] = _Match(self.end)
+
+    def end_group(self, name, s: str):
+        self.group[name].substr = s[self.group[name].start: self.end]
+        self.group[name].end = self.end
+
 
 class Match:
-    @dataclass
-    class _Match:
-        start: int
-        end: int
-        substr: str
 
     def __init__(self, traversal_state: TraversalState, s: str):
-        self.groups: dict[str][self._Match] = {}
+        self.groups: dict[str | int, _Match] = {}
         self._add_groups(traversal_state, s)
 
     def group(self, i: Union[str, int] = 0):
@@ -173,7 +190,7 @@ class Match:
 
     def _add_groups(self, traversal_state, s):
         # for now, only add biggest group
-        self.groups[0] = self._Match(
+        self.groups[0] = _Match(
             traversal_state.get_start(),
             traversal_state.get_end(),
             s[traversal_state.get_start():traversal_state.get_end()],
@@ -248,10 +265,10 @@ class NFA:
             if cur > len(s):
                 break
 
-    def _search(self, s: str, start):
+    def _search(self, s: str, start: int):
         """If any substring in s matches, this returns true
         """
-        paths = [TraversalState(start, start, self.start_state, set())]
+        paths = [TraversalState(start, start, self.start_state, set(), {})]
 
         while paths:
             path = paths.pop()
@@ -269,14 +286,20 @@ class NFA:
                     else:
                         new_cycle = set()
 
-                    paths.append(
-                        TraversalState(
-                            path.get_start(),
-                            path.get_end() + (0 if transition.is_epsilon_transition() else 1),
-                            transition.get_target_state().get_name(),
-                            new_cycle,
-                        )
+                    new_path = TraversalState(
+                        path.get_start(),
+                        path.get_end() + (0 if transition.is_epsilon_transition() else 1),
+                        transition.get_target_state().get_name(),
+                        new_cycle,
+                        dict(path.group),
                     )
+
+                    if transition.is_starting_group():
+                        new_path.start_group(transition.start_group)
+                    elif transition.is_ending_group():
+                        new_path.end_group(transition.end_group, s)
+
+                    paths.append(new_path)
 
         return None
 
