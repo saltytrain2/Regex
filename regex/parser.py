@@ -1,8 +1,7 @@
 from abc import ABC, abstractmethod
-from regex import finite_automata as fa
+from . import finite_automata as fa
 
 from more_itertools import peekable
-from copy import deepcopy
 
 
 class AST(ABC):

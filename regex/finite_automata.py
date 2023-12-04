@@ -159,8 +159,17 @@ class Match:
         self.groups: dict[str][self._Match] = {}
         self._add_groups(traversal_state, s)
 
-    def group(self, i: Union[str, int]):
+    def group(self, i: Union[str, int] = 0):
         return self.groups[i].substr
+
+    def span(self, i: Union[str, int] = 0):
+        return (self.groups[i].start, self.groups[i].end)
+
+    def start(self, i: Union[str, int] = 0):
+        return self.groups[i].start
+
+    def end(self, i: Union[str, int] = 0):
+        return self.groups[i].end
 
     def _add_groups(self, traversal_state, s):
         # for now, only add biggest group
@@ -218,6 +227,26 @@ class NFA:
 
     def match(self, s: str):
         return self._search(s, 0)
+
+    def search(self, s: str, start=0):
+        for i in range(start, len(s) + 1):
+            if (m := self._search(s, i)) is not None:
+                return m
+
+        return None
+
+    def finditer(self, s: str):
+        cur = 0
+        while (m := self.search(s, cur)) is not None:
+            yield m
+
+            cur = m.end()
+
+            if m.end() == m.start():
+                cur += 1
+
+            if cur > len(s):
+                break
 
     def _search(self, s: str, start):
         """If any substring in s matches, this returns true
