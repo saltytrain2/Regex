@@ -216,7 +216,10 @@ class NFA:
 
         graph.render(directory=filepath, engine="dot", cleanup=True)
 
-    def search(self, s: str, start=0):
+    def match(self, s: str):
+        return self._search(s, 0)
+
+    def _search(self, s: str, start):
         """If any substring in s matches, this returns true
         """
         paths = [TraversalState(start, start, self.start_state, set())]

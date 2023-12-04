@@ -13,8 +13,8 @@ class Regex:
         ast.accept(builder)
         return builder.get_nfa()
 
-    def search(self, s: "str"):
-        return self.nfa.search(s)
+    def match(self, s: "str"):
+        return self.nfa.match(s)
 
     def dump(self, filename="nfa", filepath=".", format="pdf"):
         return self.nfa.dump(filename, filepath, format)
