@@ -33,3 +33,15 @@ class Regex:
 
 def search(regex: str, s: str):
     return Regex(regex).search(s)
+
+
+def match(regex: str, s: str):
+    return Regex(regex).match(s)
+
+
+def finditer(regex: str, s: str):
+    return Regex(regex).finditer(s)
+
+
+def findall(regex: str, s: str):
+    return Regex(regex).findall(s)
