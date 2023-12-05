@@ -16,10 +16,10 @@ class TestRegex(unittest.TestCase):
         self.assertEqual(r.match("a").group(), "")
         self.assertEqual(r.match("").group(), "")
         self.assertEqual(r.match("biujwk").group(), "")
-    
+
     def test_kleene_star(self):
         r = Regex(r"a*")
-        
+
         self.assertEqual(r.match("b").group(), "")
         self.assertEqual(r.search("bcdaaaa").group(), "")
         self.assertEqual(len(list(r.finditer("bcdaaaa"))), 5)
@@ -41,14 +41,15 @@ class TestRegex(unittest.TestCase):
 
     def test_group(self):
         r = Regex(r"a(b)*")
-        
+
         self.assertEqual(r.match("a").group(), "a")
         self.assertEqual(r.match("ab").group(), "ab")
 
-        r = Regex(r"a(b|c)+")
-        
-        self.assertEqual(r.match("abc").group(), "abc")
-        self.assertEqual(r.match("ac").group(), "ac")
+        r = Regex(r"a(b|c)+\1")
+
+        self.assertEqual(r.match("abb").group(), "abb")
+        self.assertEqual(r.match("abcc").group(), "abcc")
+        self.assertIsNone(r.match("abcb"))
         self.assertIsNone(r.match("ad"))
 
     def test_set(self):

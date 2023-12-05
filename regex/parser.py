@@ -92,6 +92,9 @@ class BackReference(AST):
         else:
             return self.reference
     
+    def get_reference(self):
+        return self.reference
+
     def accept(self, visitor: Visitor):
         return visitor.visit_backreference(self)
 
@@ -389,6 +392,7 @@ class NFABuilder(Visitor):
     def visit_backreference(self, node):
         s1 = self.nfa.add_state()
         s2 = self.nfa.add_state()
+        self.nfa.add_transition(s1, s2, fa.BackReferenceMatcher(node.get_reference()))
         self.start = s1
         self.end = s2
         return (s1, s2)
@@ -508,7 +512,7 @@ class RegexParser:
         elif c == "|":
             return Epsilon()
         elif c == "\\":
-            atom = self._parse_escape(self.GLOBAL_METACHARS)
+            atom = self._parse_escape()
         else:
             atom = self._parse_literal(self.GLOBAL_METACHARS)
 
@@ -560,17 +564,18 @@ class RegexParser:
             return Or(lhs, self._parse_set_items())
 
     def _parse_escape(self):
+        self._advance()
         c = self._peek()
 
-        if not c.isalnum(self):
+        if not c.isalnum():
             return Literal(self._advance())
-        elif c.isdigit(self):
+        elif c.isdigit():
             num = int(self._parse_digit(3))
 
-            if 1 <= num <= 9 or self.group_manager.is_finished(self, num):
-                if not self.group_manager.is_finished(self, num):
+            if 1 <= num <= 9 or self.group_manager.is_finished(num):
+                if not self.group_manager.is_finished(num):
                     raise ParserError(f"Invalid reference to group {num}")
-
+                
                 return BackReference(num)
 
             raise NotImplementedError("escape sequence not parsable yet")
@@ -582,7 +587,7 @@ class RegexParser:
         ret = ""
         counter = 0
 
-        while (self, max_digits is None or counter < max_digits) and self._peek().isdigit():
+        while (max_digits is None or counter < max_digits) and self._peek().isdigit():
             ret += self._advance()
 
         return ret

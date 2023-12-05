@@ -42,20 +42,23 @@ class Transition:
     def get_target_name(self):
         return self.target_name
 
-    def match(self, input, i):
-        return self.match_symbol.match(input, i)
+    def match(self, input, i, groups):
+        return self.match_symbol.match(input, i, groups)
 
     def get_target_state(self):
         return self.target_state
 
-    def is_epsilon_transition(self):
-        return self.match_symbol.is_epsilon()
+    def is_epsilon_transition(self, groups):
+        return self.match_symbol.is_epsilon(groups)
 
     def is_starting_group(self):
         return self.start_group is not None
 
     def is_ending_group(self):
         return self.end_group is not None
+
+    def num_consumed(self, groups):
+        return self.match_symbol.num_consumed(groups)
 
     def log(self):
         edge_str = self.match_symbol.log()
@@ -69,7 +72,7 @@ class Transition:
 
 class Matcher(ABC):
     @abstractmethod
-    def match(self, input, i):
+    def match(self, input: str, i: int, groups: dict[int | str, str]):
         return False
 
     @abstractmethod
@@ -77,8 +80,12 @@ class Matcher(ABC):
         return ""
 
     @abstractmethod
-    def is_epsilon(self):
+    def is_epsilon(self, groups: dict[int | str, str]):
         return False
+
+    @abstractmethod
+    def num_consumed(self, groups: dict[int | str, str]):
+        return 0
 
 
 class CharacterMatcher(Matcher):
@@ -88,22 +95,28 @@ class CharacterMatcher(Matcher):
     def log(self):
         return self.c
 
-    def match(self, input, i):
+    def match(self, input, i, groups):
         return len(input) > i and input[i] == self.c
 
-    def is_epsilon(self):
+    def is_epsilon(self, groups):
         return False
+
+    def num_consumed(self, groups):
+        return 1
 
 
 class EpsilonMatcher(Matcher):
     def log(self):
         return "ε"
 
-    def match(self, input, i):
+    def match(self, input, i, groups):
         return True
 
-    def is_epsilon(self):
+    def is_epsilon(self, groups):
         return True
+
+    def num_consumed(self, groups):
+        return 0
 
 
 class RangeMatcher(Matcher):
@@ -114,11 +127,31 @@ class RangeMatcher(Matcher):
     def log(self):
         return self.start + "-" + self.end
 
-    def match(self, input, i):
+    def match(self, input, i, groups):
         return len(input) > i and self.start <= input[i] <= self.end
 
-    def is_epsilon(self):
+    def is_epsilon(self, groups):
         return False
+
+    def num_consumed(self, groups):
+        return 1
+
+
+class BackReferenceMatcher(Matcher):
+    def __init__(self, reference):
+        self.reference = reference
+
+    def log(self):
+        return r"\\" + str(self.reference)
+
+    def match(self, input, i, groups):
+        return input[i:i+len(groups[self.reference].substr)] == groups[self.reference].substr
+
+    def is_epsilon(self, groups):
+        return groups[self.reference].substr == ""
+
+    def num_consumed(self, groups):
+        return len(groups[self.reference].substr)
 
 
 class GroupMatcher(Matcher):
@@ -128,11 +161,14 @@ class GroupMatcher(Matcher):
     def log(self):
         return "[" + "".join(self.matches) + "]"
 
-    def match(self, input, i):
+    def match(self, input, i, groups):
         return any(m.match(input, i) for m in self.matches)
 
     def is_epsilon(self):
         return False
+
+    def num_consumed(self, groups):
+        return 1
 
 
 @dataclass
@@ -148,7 +184,7 @@ class TraversalState:
     end: int
     state: str
     cur_cycle: set[str]
-    group: dict[Union[int, str]][_Match]
+    groups: dict[int | str, _Match]
 
     def get_state(self):
         return self.state
@@ -163,18 +199,17 @@ class TraversalState:
         return self.cur_cycle
 
     def start_group(self, name):
-        self.group[name] = _Match(self.end)
+        self.groups[name] = _Match(self.end)
 
     def end_group(self, name, s: str):
-        self.group[name].substr = s[self.group[name].start: self.end]
-        self.group[name].end = self.end
+        self.groups[name].substr = s[self.groups[name].start: self.end]
+        self.groups[name].end = self.end
 
 
 class Match:
 
-    def __init__(self, traversal_state: TraversalState, s: str):
-        self.groups: dict[str | int, _Match] = {}
-        self._add_groups(traversal_state, s)
+    def __init__(self, groups):
+        self.groups: dict[str | int, _Match] = groups
 
     def group(self, i: Union[str, int] = 0):
         return self.groups[i].substr
@@ -187,14 +222,6 @@ class Match:
 
     def end(self, i: Union[str, int] = 0):
         return self.groups[i].end
-
-    def _add_groups(self, traversal_state, s):
-        # for now, only add biggest group
-        self.groups[0] = _Match(
-            traversal_state.get_start(),
-            traversal_state.get_end(),
-            s[traversal_state.get_start():traversal_state.get_end()],
-        )
 
 
 class NFA:
@@ -272,15 +299,15 @@ class NFA:
 
         while paths:
             path = paths.pop()
-
+            
             if path.get_state() in self.end_states:
-                return Match(path, s)
+                return Match(path.groups)
 
             for transition in self.states[path.get_state()]:
-                if transition.match(s, path.get_end()):
-                    if transition.is_epsilon_transition() and path.get_state() in path.get_cur_cycle():
+                if transition.match(s, path.get_end(), path.groups):
+                    if transition.is_epsilon_transition(path.groups) and path.get_state() in path.get_cur_cycle():
                         continue
-                    elif transition.is_epsilon_transition():
+                    elif transition.is_epsilon_transition(path.groups):
                         new_cycle = set(path.get_cur_cycle())
                         new_cycle.add(path.get_state())
                     else:
@@ -288,10 +315,10 @@ class NFA:
 
                     new_path = TraversalState(
                         path.get_start(),
-                        path.get_end() + (0 if transition.is_epsilon_transition() else 1),
+                        path.get_end() + transition.num_consumed(path.groups),
                         transition.get_target_state().get_name(),
                         new_cycle,
-                        dict(path.group),
+                        deepcopy(path.groups),
                     )
 
                     if transition.is_starting_group():
