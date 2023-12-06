@@ -343,11 +343,11 @@ class NFABuilder(Visitor):
 
         l1, l2 = node.get_child().accept(self)
 
-        # this is currently a non-greedy match
-        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
-        self.nfa.add_transition(s1, s2, fa.EpsilonMatcher())
+        # this is currently a greedy match
         self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
+        self.nfa.add_transition(s1, s2, fa.EpsilonMatcher())
         self.nfa.add_transition(l2, l1, fa.EpsilonMatcher())
+        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
 
         self.start = s1
         self.end = s2
@@ -360,8 +360,8 @@ class NFABuilder(Visitor):
         l1, l2 = node.get_child().accept(self)
 
         self.nfa.add_transition(s1, l1, fa.EpsilonMatcher())
-        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
         self.nfa.add_transition(l2, l1, fa.EpsilonMatcher())
+        self.nfa.add_transition(l2, s2, fa.EpsilonMatcher())
 
         self.start = s1
         self.end = s2
@@ -438,6 +438,46 @@ class RegexParser:
         "t": "\x09",
     }
 
+    ESCAPE_GROUPS = {
+        "w": Or(Range("a", "z"),
+                Or(Range("A", "Z"),
+                   Or(Range("0", "9"),
+                      Literal("_"),
+                      )
+                   )
+                ),
+        "d": Range("0", "9"),
+        "v": Or(Literal("\n"),
+                Or(Literal("\v"),
+                   Or(Literal("\f"),
+                      Or(Literal("\r"),
+                         Literal("\x85"),
+                         )
+                      )
+                   )
+                ),
+        "h": Or(Literal("\t"),
+                Or(Literal(" "),
+                   Literal("\xa0"),
+                   )
+                ),
+        "s": Or(Or(Literal("\n"),
+                   Or(Literal("\v"),
+                      Or(Literal("\f"),
+                         Or(Literal("\r"),
+                            Literal("\x85"),
+                            )
+                         )
+                      )
+                   ),
+                Or(Literal("\t"),
+                   Or(Literal(" "),
+                      Literal("\xa0"),
+                      )
+                   )
+                ),
+    }
+
     def __init__(self, regex):
         self.it = peekable(self._lex(regex))
         self.group_manager = GroupManager()
@@ -454,7 +494,13 @@ class RegexParser:
 
     def parse(self):
         ast = self._parse_expr()
-        assert self._eof()  # must match entire regex
+
+        if not self._eof():
+            if self._peek() == ")":
+                raise ParserError("Unmatched parentheses")
+            else:
+                raise ParserError("Unknown error in consuming entire input")
+
         return Group(ast, 0)
 
     def _advance(self):
@@ -581,6 +627,9 @@ class RegexParser:
             raise NotImplementedError("escape sequence not parsable yet")
         elif c in self.CHAR_ESCAPE_SEQS:
             return Literal(self.CHAR_ESCAPE_SEQS[self._advance()])
+        elif c in self.ESCAPE_GROUPS:
+            return self.ESCAPE_GROUPS[self._advance()]
+
         pass
 
     def _parse_digit(self, max_digits: int = None):

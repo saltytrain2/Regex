@@ -1,1 +1,1 @@
-from .regex import Regex
+from .regex import Regex, match, findall, search, finditer

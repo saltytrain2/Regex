@@ -29,7 +29,7 @@ class State:
         return self.name
 
     def __iter__(self):
-        return iter(self.transitions)
+        return reversed(self.transitions)
 
 
 @dataclass
@@ -366,24 +366,24 @@ class OptimizerModule(ABC):
         self.optimizer = optimizer
 
     @abstractmethod
-    def optimize():
+    def optimize(self):
         return None
 
 
 class EpsilonEliminator(OptimizerModule):
 
-    def optimize():
+    def optimize(self):
         pass
 
 
 class DFAConverter(OptimizerModule):
 
-    def optimize():
+    def optimize(self):
         pass
 
 
 class Optimizer:
-    O1_OPTIMIZATIONS = []
+    O1_OPTIMIZATIONS = [EpsilonEliminator]
 
     def __init__(self, nfa: NFA):
         self.nfa = nfa
@@ -400,7 +400,7 @@ class Optimizer:
 
         if level >= 1:
             for optimizing_module in self.O1_OPTIMIZATIONS:
-                optimizing_module.optimize(self)
+                optimizing_module(self).optimize()
                 self.update()
 
         return self.nfa

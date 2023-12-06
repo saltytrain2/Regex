@@ -11,7 +11,7 @@ class TestRegex(unittest.TestCase):
 
     def test_alternation(self):
         r = Regex(r"a|")
-        self.assertEqual(r.match("a").group(), "")
+        self.assertEqual(r.match("a").group(), "a")
         self.assertEqual(r.match("").group(), "")
         self.assertEqual(r.match("biujwk").group(), "")
 
@@ -32,7 +32,7 @@ class TestRegex(unittest.TestCase):
         self.assertEqual(r.match("a").group(), "a")
 
         r = Regex(r"(|a)*")
-        self.assertEqual(r.match("aaaab").group(), "aaaa")
+        self.assertEqual(r.match("aaaab").group(), "")
 
     def test_kleene_plus(self):
         r = Regex(r"a+")
@@ -50,7 +50,7 @@ class TestRegex(unittest.TestCase):
         self.assertIsNone(r.match("abcb"))
         self.assertIsNone(r.match("ad"))
 
-        r = Regex(r"(([A-Za-z_]+)[0-9]+) \2\1")
+        r = Regex(r"(([a-z]+)\d+) \2\1")
         self.assertEqual(r.search("123abc123 abcabc123").group(), "abc123 abcabc123")
         self.assertTupleEqual(r.search("123abc123 abcabc123").span(), (3, 19))
 
@@ -67,3 +67,7 @@ class TestRegex(unittest.TestCase):
         r = Regex(r"(a+|b*c)[]-][a-z]+")
         self.assertEqual(r.match("a-w").group(), "a-w")
         self.assertEqual(r.match("c]aby{z").group(), "c]aby")
+
+    def test_generic_char_groups(self):
+        r = Regex(r"\d\w\w\w\w\d")
+        self.assertListEqual(r.findall("0a7P_9"), ["0a7P_9"])
