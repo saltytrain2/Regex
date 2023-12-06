@@ -1,10 +1,12 @@
 from .parser import parse, NFABuilder
+from .finite_automata import Optimizer
 
 
 class Regex:
-    def __init__(self, regex, opt="O0"):
+    def __init__(self, regex, opt="O1"):
         self.opt = opt
-        self.nfa = self.build_nfa(regex, opt)
+        self.nfa = Optimizer(self.build_nfa(regex, opt)).optimize(opt)
+
 
     def build_nfa(self, regex, opt):
         ast = parse(regex)

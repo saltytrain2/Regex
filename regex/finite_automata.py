@@ -4,14 +4,15 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Union
 from copy import deepcopy
+from collections import defaultdict
 
 import graphviz as gviz
 
 
 class State:
-    def __init__(self, name):
+    def __init__(self, name: str):
         self.name = name
-        self.transitions = []
+        self.transitions: list[Transition] = []
 
     def add_transition(self, transition):
         self.transitions.append(transition)
@@ -48,8 +49,11 @@ class Transition:
     def get_target_state(self):
         return self.target_state
 
-    def is_epsilon_transition(self, groups):
+    def is_epsilon_transition(self, groups=None):
         return self.match_symbol.is_epsilon(groups)
+
+    def is_group_transition(self):
+        return not (self.is_starting_group() or self.is_ending_group())
 
     def is_starting_group(self):
         return self.start_group is not None
@@ -148,10 +152,30 @@ class BackReferenceMatcher(Matcher):
         return input[i:i+len(groups[self.reference].substr)] == groups[self.reference].substr
 
     def is_epsilon(self, groups):
+        if groups is None:
+            return False
+
         return groups[self.reference].substr == ""
 
     def num_consumed(self, groups):
         return len(groups[self.reference].substr)
+
+
+class InverseMatcher(Matcher):
+    def __init__(self, matcher: Matcher):
+        self.matcher = matcher
+
+    def log(self):
+        return "!" + self.matcher.log()
+
+    def match(self, input, i, groups):
+        return not self.matcher.match(input, i, groups)
+
+    def is_epsilon(self, groups):
+        return False  # not matching always consumes an input
+
+    def num_consumed(self, groups):
+        return 1  # not matching always consumes one input
 
 
 class GroupMatcher(Matcher):
@@ -226,9 +250,15 @@ class Match:
 
 class NFA:
     def __init__(self):
-        self.states = {}
-        self.start_state = ""
-        self.end_states = set()
+        self.states: dict[str, State] = {}
+        self.start_state: str = ""
+        self.end_states: set[str] = set()
+
+    def state_iter(self):
+        yield from self.states
+
+    def get_transitions(self, state: str):
+        return [transition for transition in self.states[state]]
 
     def set_start_state(self, state: str):
         self.start_state = state
@@ -299,7 +329,7 @@ class NFA:
 
         while paths:
             path = paths.pop()
-            
+
             if path.get_state() in self.end_states:
                 return Match(path.groups)
 
@@ -330,4 +360,66 @@ class NFA:
 
         return None
 
+
+class OptimizerModule(ABC):
+    def __init__(self, optimizer: Optimizer):
+        self.optimizer = optimizer
+
+    @abstractmethod
+    def optimize():
+        return None
+
+
+class EpsilonEliminator(OptimizerModule):
+
+    def optimize():
+        pass
+
+
+class DFAConverter(OptimizerModule):
+
+    def optimize():
+        pass
+
+
+class Optimizer:
+    O1_OPTIMIZATIONS = []
+
+    def __init__(self, nfa: NFA):
+        self.nfa = nfa
+        self.epsilon_closure = self._calculate_epsilon_closure()
+
+    def get_epsilon_closure(self):
+        return self.epsilon_closure
+
+    def update(self):
+        self.epsilon_closure = self._calculate_epsilon_closure()
+
+    def optimize(self, level="O0"):
+        level = int(level[1])
+
+        if level >= 1:
+            for optimizing_module in self.O1_OPTIMIZATIONS:
+                optimizing_module.optimize(self)
+                self.update()
+
+        return self.nfa
+
+    def _calculate_epsilon_closure(self):
+        closure: dict[set[str]] = defaultdict(set)
+
+        for state in self.nfa.state_iter():
+            frontier = self._transition_frontier(state)
+
+            while frontier:
+                next_state = frontier.pop()
+                for transition in self.nfa.get_transitions(next_state):
+                    if transition.is_epsilon_transition() and not transition.is_group_transition():
+                        frontier.append(transition.get_target_name())
+                closure[state].add(next_state)
+
+        return closure
+
+    def _transition_frontier(self, state: str):
+        return [transition.get_target_name() for transition in self.nfa.get_transitions(state)]
 

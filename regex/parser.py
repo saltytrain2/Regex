@@ -509,7 +509,7 @@ class RegexParser:
             atom = self._parse_set()
         elif c in self.ANCHORS:
             return self._parse_anchor()
-        elif c == "|":
+        elif c in "|)":
             return Epsilon()
         elif c == "\\":
             atom = self._parse_escape()
