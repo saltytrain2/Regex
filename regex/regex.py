@@ -1,15 +1,14 @@
-from .parser import parse, NFABuilder
+from .parser import parse, NFABuilder, ASTPrinter
 from .finite_automata import Optimizer
 
 
 class Regex:
     def __init__(self, regex, opt="O1"):
         self.opt = opt
-        self.nfa = Optimizer(self.build_nfa(regex, opt)).optimize(opt)
+        self.ast = parse(regex)
+        self.nfa = Optimizer(self.build_nfa(self.ast, opt)).optimize(opt)
 
-
-    def build_nfa(self, regex, opt):
-        ast = parse(regex)
+    def build_nfa(self, ast, opt):
         builder = NFABuilder()
 
         ast.accept(builder)
@@ -24,8 +23,13 @@ class Regex:
     def finditer(self, s: str):
         yield from self.nfa.finditer(s)
 
-    def dump(self, filename="nfa", filepath=".", format="pdf"):
+    def dump_nfa(self, filename="nfa", filepath=".", format="pdf"):
         return self.nfa.dump(filename, filepath, format)
+
+    def dump_ast(self, filename="ast", filepath=".", format="pdf"):
+        printer = ASTPrinter()
+        self.ast.accept(printer)
+        printer.dump(filename, filepath, format)
 
     def findall(self, s: str):
         return [g.group(0) for g in self.finditer(s)]

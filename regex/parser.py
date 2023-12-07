@@ -5,6 +5,7 @@ from typing import Optional, Union
 
 from . import finite_automata as fa
 
+import graphviz as gviz
 from more_itertools import peekable
 
 
@@ -74,7 +75,7 @@ class Literal(AST):
         self.c = c
 
     def item(self):
-        return self.c
+        return f"'{self.c}'"
 
     def accept(self, visitor: "Visitor"):
         return visitor.visit_literal(self)
@@ -88,7 +89,7 @@ class BackReference(AST):
 
     def item(self):
         if isinstance(self.reference, int):
-            return "\\" + self.reference
+            return "\\\\" + str(self.reference)
         else:
             return self.reference
     
@@ -176,7 +177,14 @@ class Group(UnaryOperator):
         self.group_name = name
 
     def item(self):
-        return "()"
+        group_ref = ""
+        if self.num is not None:
+            group_ref += str(self.num)
+
+        if self.group_name is not None:
+            group_ref += ", " + self.group_name
+
+        return f"({group_ref})"
     
     def get_group_num(self):
         return self.num
@@ -397,6 +405,62 @@ class NFABuilder(Visitor):
         self.end = s2
         return (s1, s2)
         pass
+
+
+class ASTPrinter(Visitor):
+    def __init__(self, **kwargs):
+        self.graph = gviz.Digraph(**kwargs)
+        self.node = 0
+
+    def new_node(self, node: AST):
+        tmp = str(self.node)
+        self.node += 1
+        self.graph.node(tmp, label=node.item())
+        return tmp
+    
+    def link(self, parent: str, child: str):
+        self.graph.edge(parent, child)
+
+    def unary_node(self, node: UnaryOperator):
+        new_node = self.new_node(node)
+        self.link(new_node, node.get_child().accept(self))
+        return new_node
+
+    def binary_node(self, node: BinaryOperator):
+        new_node = self.new_node(node)
+        self.link(new_node, node.get_left().accept(self))
+        self.link(new_node, node.get_right().accept(self))
+        return new_node
+
+    def visit_literal(self, node):
+        return self.new_node(node)
+
+    def visit_or(self, node):
+        return self.binary_node(node)
+    
+    def visit_sequence(self, node):
+        return self.binary_node(node)
+
+    def visit_kleene_plus(self, node):
+        return self.unary_node(node)
+
+    def visit_kleene_star(self, node):
+        return self.unary_node(node)
+
+    def visit_range(self, node):
+        return self.new_node(node)
+
+    def visit_epsilon(self, node):
+        return self.new_node(node)
+
+    def visit_backreference(self, node):
+        return self.new_node(node)
+
+    def visit_group(self, node):
+        return self.unary_node(node)
+    
+    def dump(self, filename="ast", dir=".", format="pdf"):
+        return self.graph.render(filename=filename, directory=dir, format=format, engine="dot")
 
 
 class ParserError(RuntimeError):

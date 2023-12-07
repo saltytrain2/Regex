@@ -97,7 +97,7 @@ class CharacterMatcher(Matcher):
         self.c = c
 
     def log(self):
-        return self.c
+        return "'" + self.c + "'"
 
     def match(self, input, i, groups):
         return len(input) > i and input[i] == self.c
@@ -299,7 +299,7 @@ class NFA:
 
         graph.node("_", shape="point")
         graph.edge("_", self.start_state)
-
+        
         graph.render(directory=filepath, engine="dot", cleanup=True)
 
     def match(self, s: str):
