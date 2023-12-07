@@ -149,6 +149,9 @@ class BackReferenceMatcher(Matcher):
         return r"\\" + str(self.reference)
 
     def match(self, input, i, groups):
+        if self.reference not in groups:
+            return False
+
         return input[i:i+len(groups[self.reference].substr)] == groups[self.reference].substr
 
     def is_epsilon(self, groups):
