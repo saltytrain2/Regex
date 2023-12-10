@@ -52,8 +52,11 @@ class Transition:
     def is_epsilon_transition(self, groups=None):
         return self.match_symbol.is_epsilon(groups)
 
+    def is_pure_epsilon_transition(self, groups=None):
+        return self.is_epsilon_transition(groups) and not self.is_group_transition()
+
     def is_group_transition(self):
-        return not (self.is_starting_group() or self.is_ending_group())
+        return self.is_starting_group() or self.is_ending_group()
 
     def is_starting_group(self):
         return self.start_group is not None
@@ -150,13 +153,13 @@ class BackReferenceMatcher(Matcher):
 
     def match(self, input, i, groups):
         if self.reference not in groups:
-            return False
+            return True
 
         return input[i:i+len(groups[self.reference].substr)] == groups[self.reference].substr
 
     def is_epsilon(self, groups):
         if groups is None:
-            return False
+            return True
 
         return groups[self.reference].substr == ""
 
@@ -283,7 +286,7 @@ class NFA:
         self.states[start].add_transition(Transition(match, end, self.states[end], start_group, end_group))
 
     def dump(self, filename: str, filepath: str, format: str):
-        graph = gviz.Digraph(filename, format=format)
+        graph = gviz.Digraph()
 
         for state_name in self.states.keys():
             shape = "circle" if state_name not in self.end_states else "doublecircle"
@@ -300,7 +303,7 @@ class NFA:
         graph.node("_", shape="point")
         graph.edge("_", self.start_state)
         
-        graph.render(directory=filepath, engine="dot", cleanup=True)
+        graph.render(filename=filename, directory=filepath, format=format, engine="dot", cleanup=True)
 
     def match(self, s: str):
         return self._search(s, 0)

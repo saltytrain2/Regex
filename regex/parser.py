@@ -460,7 +460,7 @@ class ASTPrinter(Visitor):
         return self.unary_node(node)
     
     def dump(self, filename="ast", dir=".", format="pdf"):
-        return self.graph.render(filename=filename, directory=dir, format=format, engine="dot")
+        return self.graph.render(filename=filename, directory=dir, format=format, engine="dot", cleanup=True)
 
 
 class ParserError(RuntimeError):

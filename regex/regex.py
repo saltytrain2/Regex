@@ -3,14 +3,13 @@ from .finite_automata import Optimizer
 
 
 class Regex:
-    def __init__(self, regex, opt="O1"):
+    def __init__(self, regex, opt="O0"):
         self.opt = opt
         self.ast = parse(regex)
-        self.nfa = Optimizer(self.build_nfa(self.ast, opt)).optimize(opt)
+        self.nfa = Optimizer(self.build_nfa(self.ast)).optimize(opt)
 
-    def build_nfa(self, ast, opt):
+    def build_nfa(self, ast):
         builder = NFABuilder()
-
         ast.accept(builder)
         return builder.get_nfa()
 
