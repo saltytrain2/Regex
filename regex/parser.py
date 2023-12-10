@@ -75,7 +75,7 @@ class Literal(AST):
         self.c = c
 
     def item(self):
-        return f"'{self.c}'"
+        return self.c
 
     def accept(self, visitor: "Visitor"):
         return visitor.visit_literal(self)
