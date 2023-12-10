@@ -485,6 +485,28 @@ class GroupManager:
 
 
 class RegexParser:
+    """Extended BNF Grammar for the parser as it currently stands with regex syntax
+    <regex> is the top-level entry point for each regex
+
+    <regex>               ::= <term> ("|" <regex>)*
+    <term>                ::= <atom> <term>*
+    <atom>                ::= <unquantifiable-atom> | <quantifiable-atom>
+    <quantifiable-atom>   ::= (<group> | <set> | <literal> | <atom-escape>) <quantifier>?
+    <unquantifiable-atom> ::= <anchor>
+    <anchor>              ::= "$" | "^"
+    <quantifier>          ::= "*" | "+" | "?"
+    <group>               ::= "(" <regex> ")"
+    <set>                 ::= "[" <set-item>+ "]"
+    <set-items>           ::= <set-literal> | <set-literal> "-" <set-literal>
+    <literal>             ::= <alphanum> | <nonspecial-alphanum>
+    <literal-escape>      ::= "\\" (<non-alphanum> | <charescape> | <charclass> | <digit>{,3})
+    <alphanum>            ::= <char> | <digit>
+    <char>                ::= "A" | "B" | ... | "y" | "z"
+    <digit>               ::= "0" | "1" | ... | "8" | "9"
+    <charclass>           ::= "w" | "d" | "v" | "h" | "s"
+    <charescape>          ::= "a" | "e" | "f" | "n" | "r" | "t"
+    """
+
     GLOBAL_METACHARS = set(r"\^$[.|()?*+{")
     SET_METACHARS = set(r"\^-[]")
     SPECIALCHARS = set("sSdDwW")
